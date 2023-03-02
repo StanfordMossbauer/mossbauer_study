@@ -1,9 +1,11 @@
 from scipy.stats import cauchy, binom, poisson
 from scipy.optimize import curve_fit, minimize
+from scipy.special import jv
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import pandas as pd
+from os.path import join
 
 name_map = {
     'velocities': 'vel',
@@ -11,25 +13,66 @@ name_map = {
     'counts': 'count',
 }
 
-def vel_to_E(vel, E=14.4e3):
+def vel_to_E(vel, E0=14.4e3):
     c = 3e11  # mm/s
-    return E*vel/c
+    return E0*vel/c
 
-def lorentzian(x, x0, gamma):
-    """Lorentzian function with max = 1"""
-    return (1.0/( 1 + ((x-x0)/gamma)**2 ) )
+def E_to_vel(E, E0=14.4e3):
+    c = 3e11  # mm/s
+    return E*c/E0
+
+def lorentzian(x, x0, gamma, amplitude=1):
+    """Lorentzian function with max default to 1
+
+    Note: gamma is the HALF width at half max
+    """
+    return amplitude/( 1 + ((x-x0)/gamma)**2 )
+
+def lorentzian_norm(x, x0, gamma):
+    amplitude = 1.0 / np.pi / gamma
+    return lorentzian(x, x0, gamma, amplitude)
 
 
-def mossbauer_spectrum(vel, R0, velres, gamma, k):
+def mossbauer_spectrum(vel, R0, velres, gamma, t_mgcm2, bkg=0.0, absorption_coeff=25.0):
     """Evaluate Mossbauer-reduced rate(s)
 
     vel : doppler velocity
     R0 : asymptotic rate
     velres : velocity of resonance
-    gamma : linewidth
-    k : coefficient of absorption
+    gamma : natural linewidth
+    t_mgcm2 : thickness in mgFe57/cm^2
+    absorption_coeff : coefficient of absorption (cm^2/mgFe57)
     """
-    return R0 * np.exp(-1*k*lorentzian(vel, velres, gamma))
+    t = t_mgcm2 * absorption_coeff  # t/tnat -- effective no. mfps
+    contrast = 1 - (np.exp(-t/2) * jv(0, t/2*1j).real)
+    width = 2 * gamma * (1 + (0.135*t))  # account for thickness broadening
+    absorbed_fraction = lorentzian(vel, velres, width, contrast)
+    return (R0 - bkg) * (1 - absorbed_fraction) + bkg
+
+def composite_mossbauer_spectrum(vel, R0, offset, spacing, gamma, t_mgcm2, bkg=0.0, absorption_coeff=25.0):
+    """Evaluate Mossbauer-reduced rate(s)
+
+    vel : doppler velocity
+    R0 : asymptotic rate
+    velres : velocity of resonance
+    gamma : natural linewidth
+    t_mgcm2 : thickness in mgFe57/cm^2
+    absorption_coeff : coefficient of absorption (cm^2/mgFe57)
+    """
+    t = t_mgcm2 * absorption_coeff  # t/tnat -- effective no. mfps
+    contrast = 1 - (np.exp(-t/2) * jv(0, t/2*1j).real)
+    width = 2 * gamma * (1 + (0.135*t))  # account for thickness broadening
+    
+    split_ratio = (3, 2, 1, 1, 2, 3)
+    spacing = 2.0
+    leftmost_res = -2.5*spacing + offset
+    rate = np.zeros_like(vel)
+    split_ratio = (3, 2, 1, 1, 2, 3)
+    leftmost_res = -2.5*spacing + offset
+    absorbed_fraction = np.zeros_like(vel)
+    for i, r in enumerate(split_ratio):
+        absorbed_fraction += lorentzian(vel, leftmost_res + (i*spacing), width, r/np.sum(split_ratio)*contrast)
+    return (R0 - bkg) * (1 - absorbed_fraction) + bkg
 
 
 def negative_lnl(pars, measured_velocities, measured_times, measured_counts):
@@ -55,19 +98,28 @@ def fit_mossbauer_spectrum(velocities, times, counts, p0, method=None):
     )
     return res
 
+
+def chisqr(obs, exp, error):
+    chisqr = 0
+    for i in range(len(obs)):
+        chisqr = chisqr + ((obs[i]-exp[i])**2)/(error[i]**2)
+    return chisqr
+
+
 class MossbauerMeasurement:
     def __init__(self, **kwargs):
         # take in truth information of mossbauer setup
         # construct an expected pdf
         default_kwargs = {
-            'absorber_thickness_mfp': 3.23,  # thickness / mfp
+            'absorber_thickness_mgcm2': 0.13,  # thickness / mfp
             'source_detector_distance': 30.,  # cm
             'detector_diameter': 2.54*2,  # cm
             'detection_efficiency': 0.2, 
             'resonance_velocity': -0.159,  # mm/s
             'resonance_linewidth': 0.1,  # mm/s
             'source_rate': 75e3,  # count/s
-            'line_intensity': 0.0916  # 14 keV x-rays per decay (avg)
+            'line_intensity': 0.0916,  # 14 keV x-rays per decay (avg)
+            'background': 0.0  # Hz
         }
         for key, val in default_kwargs.items():
             setattr(self, key, kwargs.get(key, val))
@@ -90,19 +142,19 @@ class MossbauerMeasurement:
         self.rate_errs = np.sqrt(np.asarray(self.counts))/np.asarray(self.times)
         return
 
-    def get_expected_counts(self, velocity, time):
-        absorption_intensity = lorentzian(
-            velocity,
-            self.resonance_velocity,
-            self.resonance_linewidth
-        )
+    def get_expected_rates(self, velocity):
         mossbauer_rate = mossbauer_spectrum(
             velocity,
             self.R0,
             self.resonance_velocity,
             self.resonance_linewidth,
-            self.absorber_thickness_mfp,
+            self.absorber_thickness_mgcm2,
+            self.background,
         )
+        return mossbauer_rate
+
+    def get_expected_counts(self, velocity, time):
+        mossbauer_rate = self.get_expected_rates(velocity)
         expected_count = mossbauer_rate * time
         return expected_count
 
@@ -186,7 +238,7 @@ class MossbauerMeasurement:
             self.R0,
             self.resonance_velocity,
             self.resonance_linewidth,
-            self.absorber_thickness_mfp, 
+            self.absorber_thickness_mgcm2, 
         ]
 
 class SimulatedMossbauerMeasurement(MossbauerMeasurement):
@@ -211,11 +263,24 @@ if __name__=='__main__':
         source_rate=0.001 * (3.7e10),  # Bq
         detector_diameter=2.54*2,  # cm
         source_detector_distance=2.54*32,  # cm
-        detection_efficiency=0.1,
+        detection_efficiency=0.099,
         line_intensity=0.0916,  # 14 keV x-rays per decay (avg)
         resonance_velocity=-0.159,
-        resonance_linewidth=0.14,
-        absorber_thickness_mfp=3.23/12,
+        resonance_linewidth=0.1,
+        absorber_thickness_mgcm2=0.13*.8*.8,
+        background=50.0,
     )
     acq = SimulatedMossbauerMeasurement(**mossbauer_pars)
     realmbm = MossbauerMeasurement(**mossbauer_pars)
+    data_dir = '/Users/josephhowlett/research/mossbauer/analysis/co57-mossbauer-spectra/'
+    filename = '20221026_1007.dat'
+    realmbm.load_from_file(join(data_dir, filename))
+    realmbm.plot()
+    vels = np.asarray(realmbm.velocities) 
+    times = np.asarray(realmbm.times)
+    expected_count = acq.get_expected_counts(vels, times)
+    expected_rate = expected_count/times
+    plt.plot(vels, expected_rate)
+    print(chisqr(realmbm.rates, expected_rate, realmbm.rate_errs))
+    print(len(vels) - 1 - 2)
+    plt.show()
