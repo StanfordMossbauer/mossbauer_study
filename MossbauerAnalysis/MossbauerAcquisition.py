@@ -9,39 +9,7 @@ from tqdm import tqdm
 import pandas as pd
 from os.path import join
 
-name_map = {
-    'measured_velocities': 'vel',
-    'measured_times': 'seconds',
-    'measured_counts': 'count',
-}
-
-
-def check_pars(p, req):
-    assert set(req).issubset(p.keys()), (
-        'Not all required pars present:\n'
-        + str(req)
-        )
-    return
-
-def vel_to_E(vel, E0=14.4e3):
-    c = 3e11  # mm/s
-    return E0*vel/c
-
-def E_to_vel(E, E0=14.4e3):
-    c = 3e11  # mm/s
-    return E*c/E0
-
-def lorentzian(x, x0, gamma, amplitude=1):
-    """Lorentzian function with max default to 1
-
-    Note: gamma is the HALF width at half max, so
-    if you have a "linewidth" then you want gamma = linewidth/2
-    """
-    return amplitude/( 1 + ((x-x0)/gamma)**2 )
-
-def lorentzian_norm(x, x0, gamma):
-    amplitude = 1.0 / np.pi / gamma
-    return lorentzian(x, x0, gamma, amplitude)
+from utils import *
 
 class MossbauerMaterial:
     def __init__(self, p):
@@ -169,6 +137,39 @@ class MossbauerMeasurement:
             return quad_vec(*args)[0]
         else:
             return quad(*args)[0]
+
+    def get_deltaEmin_linear(**kwargs):
+        """First order expansion about velocity
+        Seems to be within 0.1% of full calculation, and much
+        faster.
+        """
+        # idk if confusing to let kwargs override these
+        vels = kwargs.get('vels', self.source.linewidth*np.logspace(-6, 2, 10000))
+        acquisition_time = kwargs.get('acquisition_time', self.acquisition_time)
+
+        rates = self.transmitted_spectrum(vels)
+        ders = self.transmitted_spectrum_derivative(vels)
+        min_dE = rate_to_deltaEmin(t_acq, rates, ders)
+
+        slope_vel = vels[min_dE.argmin()]
+        slope_rate = rates[min_dE.argmin()]
+        return (slope_vel, slope_rate, min_dE.min())
+
+    def get_deltaEmin_full(**kwargs):
+        """Recursive calculation, should be fully correct"""
+        # idk if confusing to let kwargs override these
+        vels = kwargs.get('vels', self.source.linewidth*np.logspace(-6, 2, 10000))
+        acquisition_time = kwargs.get('acquisition_time', self.acquisition_time)
+        
+        rates = self.transmitted_spectrum(vels)
+        f = interp1d(rates, vels, fill_value='extrapolate')
+
+        nnew = (acquisition_time*rates) + np.sqrt(acquisition_time * rates)
+        vnew = f(nnew/acquisition_time) - vels
+
+        slope_vel = vels[vnew.argmin()]
+        slope_rate = rates[vnew.argmin()]
+        return (slope_vel, slope_rate, vnew.min())
 
     #### I/O Stuff ####
     def load_from_file(self, filename):
