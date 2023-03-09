@@ -9,7 +9,7 @@ from tqdm import tqdm
 import pandas as pd
 from os.path import join
 
-from utils import *
+from .utils import *
 
 class MossbauerMaterial:
     def __init__(self, p):
@@ -138,7 +138,7 @@ class MossbauerMeasurement:
         else:
             return quad(*args)[0]
 
-    def get_deltaEmin_linear(**kwargs):
+    def get_deltaEmin_linear(self, **kwargs):
         """First order expansion about velocity
         Seems to be within 0.1% of full calculation, and much
         faster.
@@ -149,13 +149,13 @@ class MossbauerMeasurement:
 
         rates = self.transmitted_spectrum(vels)
         ders = self.transmitted_spectrum_derivative(vels)
-        min_dE = rate_to_deltaEmin(t_acq, rates, ders)
+        min_dE = rate_to_deltaEmin(acquisition_time, rates, ders)
 
         slope_vel = vels[min_dE.argmin()]
         slope_rate = rates[min_dE.argmin()]
         return (slope_vel, slope_rate, min_dE.min())
 
-    def get_deltaEmin_full(**kwargs):
+    def get_deltaEmin_full(self, **kwargs):
         """Recursive calculation, should be fully correct"""
         # idk if confusing to let kwargs override these
         vels = kwargs.get('vels', self.source.linewidth*np.logspace(-6, 2, 10000))
