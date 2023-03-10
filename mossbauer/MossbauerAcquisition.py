@@ -10,6 +10,7 @@ import pandas as pd
 from os.path import join
 
 from .utils import *
+from mossbauer import physics
 
 class MossbauerMaterial:
     def __init__(self, p):
@@ -65,6 +66,20 @@ class MossbauerMeasurement:
         self.absorber = MossbauerAbsorber(absorber_p)
         self._setup_measurement(measurement_p)
         self.clear_measurements()
+        return
+
+    def get_sensitivity(self, deltaE, model, **kwargs):
+        models = ['down_quark']
+        assert model in models, "Model must be one of: " + str(models)
+        rs = kwargs.get('separations', np.logspace(-9, -6, 100))
+        sensi = getattr(self, f'_get_sensitivity_{model}')(deltaE, rs, **kwargs)
+        return rs, sensi
+
+    def _get_sensitivity_down_quark(self, deltaE, rs, **kwargs):
+        return physics.get_limits(rs, deltaE)
+
+    def info(self):
+        """Placeholder... get all relevant info about the masurement"""
         return
 
     def _setup_measurement(self, p):
