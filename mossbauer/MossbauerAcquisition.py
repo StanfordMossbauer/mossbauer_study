@@ -13,26 +13,32 @@ from .utils import *
 from mossbauer import physics
 
 class MossbauerMaterial:
+    """Parent class for a Mossbauer isotope
+    
+    Mainly because source and absorber might share certain things
+    or even be the same object eventually. So trying to be maximally
+    general. For now, a child class just needs a function additional_pars()
+    that returns a list of required inputs.
+
+    For now this is pretty useless...
+    """
     def __init__(self, p):
+        # assert that all required pars were supplied
+        # then update the dict with them (and no others)
         required_pars = [
             'Eres',
             'linewidth',
-        ]
-        check_pars(p, required_pars)
+        ] + self.additional_pars()
+        check_pars(p, self.required_pars())
+        # use this instead of self.__dict__.update() to ignore extras
         for par in required_pars:
             setattr(self, par, p[par])
         return
 
 class MossbauerSource(MossbauerMaterial):
-    def __init__(self, p):
-        super().__init__(p)
-        required_pars = [
-            'total_activity',
-        ]
-        check_pars(p, required_pars)
-        for par in required_pars:
-            setattr(self, par, p[par])
-        return
+    """Mossbauer source class"""
+    def additional_pars(self):
+        return ['total_activity']
 
     def spectrum(self, E):
         """Returns photons/sec at the given energy"""
@@ -41,19 +47,13 @@ class MossbauerSource(MossbauerMaterial):
         )
 
 class MossbauerAbsorber(MossbauerMaterial):
-    def __init__(self, p):
-        # TODO: duplicate code
-        super().__init__(p)
-        required_pars = [
-            'thickness_normalized',
-        ]
-        check_pars(p, required_pars)
-        for par in required_pars:
-            setattr(self, par, p[par])
-        return
+    """Mossbauer absorber class"""
+    def additional_pars(self):
+        """Require number of mean free paths thick"""
+        return  ['thickness_normalized']
 
     def cross_section(self, E, vel=0.0):
-        """Returns Mossbauer absorption cross-section at the given energy"""
+        """Returns resonant absorption cross-section at the given energy"""
         return lorentzian(
             E, 
             self.Eres - vel,
@@ -61,12 +61,26 @@ class MossbauerAbsorber(MossbauerMaterial):
         )
 
 class MossbauerMeasurement:
+    """Wrapper class for a Mossbauer scan
+    
+    Owns a MossbauerSource instance and a MossbauerAbsorber instance.
+    For now this houses everything, maybe too much. The expected spectrum for 
+    arbitrary velocity and the sensitivity of the experiment to arbitrary
+    physics is here. But it also can load measured data, plot it against
+    expectation, eventually do fitting etc.
+
+    source_p: arguments to the source
+    absorber_p: arguments to the absorber
+    measurement_p: parameters for the detector, relative positions, 
+                   measurement times, etc.
+    """
     def __init__(self, source_p, absorber_p, measurement_p):
         # take in truth information of mossbauer setup
         # construct an expected pdf
         self.source = MossbauerSource(source_p)
         self.absorber = MossbauerAbsorber(absorber_p)
         self._setup_measurement(measurement_p)
+        # init empty arrays for observed data
         self.clear_measurements()
         return
 
@@ -87,45 +101,9 @@ class MossbauerMeasurement:
         sensi = getattr(self, f'_get_sensitivity_{model}')(deltaE, rs, **kwargs)
         return rs, sensi
 
-    def _get_sensitivity_down_quark(self, deltaE, rs, **kwargs):
-        return physics.get_limits(rs, deltaE)
-
     def info(self):
         """Placeholder... get all relevant info about the masurement"""
         return
-
-    def _setup_measurement(self, p):
-        required_pars = [
-            'acquisition_time',
-            'solid_angle_fraction',
-        ]
-        check_pars(p, required_pars)
-        self.__dict__.update(p)
-        return
-
-    def _transmission_integrand(self, E):
-        # photons/s between E and E + dE
-        transmission_integrand = (
-            self.source.spectrum(E) 
-            * self.solid_angle_fraction
-            * np.exp(
-                -1 
-                * self.absorber.cross_section(E, self.velocity) 
-                * self.absorber.thickness_normalized
-            )
-        )
-        return transmission_integrand
-
-    def _transmission_derivative_integrand(self, E):
-        transmission_integrand = self._transmission_integrand(E)
-        Ediff = E - (self.absorber.Eres - self.velocity)
-        half_linewidth = self.absorber.linewidth/2.0
-        extra_factor = (
-            (half_linewidth**2.0)*Ediff 
-            / (Ediff**2 + half_linewidth**2)**2
-        )
-        ## what is this -2 from?
-        return 2 * transmission_integrand * extra_factor * self.absorber.thickness_normalized
 
     def set_velocity(self, vel):
         """Set the (relative?) velocity of the experiment
@@ -142,29 +120,10 @@ class MossbauerMeasurement:
         Velocity can be an array or float. If array, you get a spectrum, and
         if float you get back a float. All returned values are in (0, 1).
         """
-        self.set_velocity(vel)
-        args = [
-            self._transmission_integrand,
-            -np.inf,
-            np.inf
-        ]
-        if hasattr(vel, '__len__'):
-            return quad_vec(*args)[0]
-        else:
-            return quad(*args)[0]
+        return _integrate_function_inf(vel, self._transmission_integrand)
 
     def transmitted_spectrum_derivative(self, vel):
-        # TODO: duplicate code
-        self.set_velocity(vel)
-        args = [
-            self._transmission_derivative_integrand,
-            -np.inf,
-            np.inf
-        ]
-        if hasattr(vel, '__len__'):
-            return quad_vec(*args)[0]
-        else:
-            return quad(*args)[0]
+        return _integrate_function_inf(vel, self._transmission_derivative_integrand)
 
     def get_deltaEmin_linear(self, **kwargs):
         """First order expansion about velocity
@@ -200,6 +159,7 @@ class MossbauerMeasurement:
         return (slope_vel, slope_rate, vnew.min())
 
     #### I/O Stuff ####
+    # Maybe this makes the class too big and ugly... I have no idea.
     def load_from_file(self, filename):
         """Grab actual spectrometer data from file"""
         df = pd.read_csv(filename, sep=r"\s+")
@@ -207,7 +167,9 @@ class MossbauerMeasurement:
         df = pd.concat(
             [
                 df,
-                pd.DataFrame({file_name: getattr(self, my_name) for my_name, file_name in name_map.items()})
+                pd.DataFrame({
+                    file_name: getattr(self, my_name) for my_name, file_name in name_map.items()
+                })
             ], 
             axis=0
         )
@@ -249,6 +211,63 @@ class MossbauerMeasurement:
         plt.xlim(xrange)
         plt.xlabel(r'$E$ [eV] - 14400')
         return
+
+    # Hidden functions
+    def _get_sensitivity_down_quark(self, deltaE, rs, **kwargs):
+        """physics lives in separate module"""
+        return physics.get_limits(rs, deltaE)
+
+    def _setup_measurement(self, p):
+        # duplicated code from MossbauerMaterial... idk.
+        required_pars = [
+            'acquisition_time',
+            'solid_angle_fraction',
+        ]
+        check_pars(p, required_pars)
+        self.__dict__.update(p)
+        return
+
+    def _transmission_integrand(self, E):
+        # photons/s between E and E + dE
+        transmission_integrand = (
+            self.source.spectrum(E) 
+            * self.solid_angle_fraction
+            * np.exp(
+                -1 
+                * self.absorber.cross_section(E, self.velocity) 
+                * self.absorber.thickness_normalized
+            )
+        )
+        return transmission_integrand
+
+    def _transmission_derivative_integrand(self, E):
+        transmission_integrand = self._transmission_integrand(E)
+        Ediff = E - (self.absorber.Eres - self.velocity)
+        half_linewidth = self.absorber.linewidth/2.0
+        extra_factor = (
+            (half_linewidth**2.0)*Ediff 
+            / (Ediff**2 + half_linewidth**2)**2
+        )
+        ## what is this 2 from?
+        return 2 * transmission_integrand * extra_factor * self.absorber.thickness_normalized
+
+    def _integrate_function_inf(self, vel, func):
+        """Integrate function over (-inf, inf) numerically
+
+        Velocity can be an array or float. If array, you get a spectrum, and
+        if float you get back a float. All returned values are in (0, 1).
+        """
+        self.set_velocity(vel)
+        args = [
+            func,
+            -np.inf,
+            np.inf
+        ]
+        if hasattr(vel, '__len__'):
+            return quad_vec(*args)[0]
+        else:
+            return quad(*args)[0]
+
 
 
 if __name__=='__main__':
