@@ -35,6 +35,7 @@ class MossbauerSource(MossbauerMaterial):
         return
 
     def spectrum(self, E):
+        """Returns photons/sec at the given energy"""
         return self.total_activity * lorentzian_norm(
             E, self.Eres, self.linewidth/2
         )
@@ -52,6 +53,7 @@ class MossbauerAbsorber(MossbauerMaterial):
         return
 
     def cross_section(self, E, vel=0.0):
+        """Returns Mossbauer absorption cross-section at the given energy"""
         return lorentzian(
             E, 
             self.Eres - vel,
@@ -69,6 +71,16 @@ class MossbauerMeasurement:
         return
 
     def get_sensitivity(self, deltaE, model, **kwargs):
+        """Median expected sensitivity 
+        
+        deltaE: minimum measureable energy shift for the experiment
+                (assumed to be separation-independent)
+        model: string identifier of the sensitivity model to use
+
+        This will get more complicated when we think about separations.. really
+        we should have some test statistic and the function should take in the
+        radii being measured? Idk..
+        """
         models = ['down_quark']
         assert model in models, "Model must be one of: " + str(models)
         rs = kwargs.get('separations', np.logspace(-9, -6, 100))
@@ -107,9 +119,10 @@ class MossbauerMeasurement:
     def _transmission_derivative_integrand(self, E):
         transmission_integrand = self._transmission_integrand(E)
         Ediff = E - (self.absorber.Eres - self.velocity)
+        half_linewidth = self.absorber.linewidth/2.0
         extra_factor = (
-            (self.absorber.linewidth**2.0)*Ediff 
-            / (Ediff**2 + self.absorber.linewidth**2)**2
+            (half_linewidth**2.0)*Ediff 
+            / (Ediff**2 + half_linewidth**2)**2
         )
         ## what is this -2 from?
         return 2 * transmission_integrand * extra_factor * self.absorber.thickness_normalized
@@ -159,7 +172,7 @@ class MossbauerMeasurement:
         faster.
         """
         # idk if confusing to let kwargs override these
-        vels = kwargs.get('vels', self.source.linewidth*np.logspace(-6, 2, 10000))
+        vels = kwargs.get('vels', self.source.linewidth*np.logspace(-6, 2, 10000)/2)
         acquisition_time = kwargs.get('acquisition_time', self.acquisition_time)
 
         rates = self.transmitted_spectrum(vels)
@@ -188,6 +201,7 @@ class MossbauerMeasurement:
 
     #### I/O Stuff ####
     def load_from_file(self, filename):
+        """Grab actual spectrometer data from file"""
         df = pd.read_csv(filename, sep=r"\s+")
         df = df[list(name_map.values())]
         df = pd.concat(
