@@ -12,6 +12,8 @@ from os.path import join
 from .utils import *
 from mossbauer import physics
 
+import pytest
+
 class MossbauerMaterial:
     """Parent class for a Mossbauer isotope
     
@@ -28,11 +30,22 @@ class MossbauerMaterial:
         required_pars = [
             'Eres',
             'linewidth',
-        ] + self.additional_pars()
-        check_pars(p, self.required_pars())
+        ] 
+        self.is_split = False  # whether material has one line or several
+        if hasattr(p.get('Eres', []), '__len__'):
+            required_pars += ['transition_coefficients']
+            self.is_split = True
+        required_pars += self.additional_pars()
+        check_pars(p, required_pars)
         # use this instead of self.__dict__.update() to ignore extras
         for par in required_pars:
             setattr(self, par, p[par])
+        if self.is_split:
+            assert 1==pytest.approx(np.sum(self.transition_coefficients), 1e-6), "Coefficients must sum to unity!"
+        return
+
+    def additional_pars(self):
+        """Placeholder - overwrite with child"""
         return
 
 class MossbauerSource(MossbauerMaterial):
@@ -41,7 +54,10 @@ class MossbauerSource(MossbauerMaterial):
         return ['total_activity']
 
     def spectrum(self, E):
-        """Returns photons/sec at the given energy"""
+        """Returns photons/sec at the given energy
+
+        TODO: add composite spectrum handling
+        """
         return self.total_activity * lorentzian_norm(
             E, self.Eres, self.linewidth/2
         )
@@ -54,11 +70,22 @@ class MossbauerAbsorber(MossbauerMaterial):
 
     def cross_section(self, E, vel=0.0):
         """Returns resonant absorption cross-section at the given energy"""
-        return lorentzian(
-            E, 
-            self.Eres - vel,
-            self.linewidth/2,
-        )
+        xsec = 0.0
+        if self.is_split:
+            for coef, Eres in zip(self.transition_coefficients, self.Eres):
+                xsec += coef * lorentzian(
+                    E,
+                    Eres - vel,
+                    self.linewidth/2,
+                )
+        else:
+            xsec = lorentzian(
+                E, 
+                self.Eres - vel,
+                self.linewidth/2,
+            )
+        return xsec
+
 
 class MossbauerMeasurement:
     """Wrapper class for a Mossbauer scan
@@ -120,10 +147,10 @@ class MossbauerMeasurement:
         Velocity can be an array or float. If array, you get a spectrum, and
         if float you get back a float. All returned values are in (0, 1).
         """
-        return _integrate_function_inf(vel, self._transmission_integrand)
+        return self._integrate_function_inf(vel, self._transmission_integrand)
 
     def transmitted_spectrum_derivative(self, vel):
-        return _integrate_function_inf(vel, self._transmission_derivative_integrand)
+        return self._integrate_function_inf(vel, self._transmission_derivative_integrand)
 
     def get_deltaEmin_linear(self, **kwargs):
         """First order expansion about velocity
