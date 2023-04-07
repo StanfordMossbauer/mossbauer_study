@@ -41,7 +41,9 @@ class MossbauerMaterial:
         for par in required_pars:
             setattr(self, par, p[par])
         if self.is_split:
-            assert 1==pytest.approx(np.sum(self.transition_coefficients), 1e-6), "Coefficients must sum to unity!"
+            # coefficients must be unity up to 1 ppm
+            assert 1==pytest.approx(np.sum(self.transition_coefficients), 1e-6), \
+                "Coefficients must sum to unity!"
         return
 
     def additional_pars(self):
@@ -56,11 +58,19 @@ class MossbauerSource(MossbauerMaterial):
     def spectrum(self, E):
         """Returns photons/sec at the given energy
 
-        TODO: add composite spectrum handling
         """
-        return self.total_activity * lorentzian_norm(
-            E, self.Eres, self.linewidth/2
-        )
+        spectrum = 0
+        if self.is_split:
+            for coef, Eres in zip(self.transition_coefficients, self.Eres):
+                spectrum += coef * lorentzian_norm(
+                    E, Eres, self.linewidth/2
+                )
+        else:
+            spectrum += lorentzian_norm(
+                E, self.Eres, self.linewidth/2
+            )
+        spectrum *= self.total_activity
+        return spectrum
 
 class MossbauerAbsorber(MossbauerMaterial):
     """Mossbauer absorber class"""
@@ -154,8 +164,7 @@ class MossbauerMeasurement:
 
     def get_deltaEmin_linear(self, **kwargs):
         """First order expansion about velocity
-        Seems to be within 0.1% of full calculation, and much
-        faster.
+        Seems to be within 0.1% of full calculation, and much faster.
         """
         # idk if confusing to let kwargs override these
         vels = kwargs.get('vels', self.source.linewidth*np.logspace(-6, 2, 10000)/2)
