@@ -19,46 +19,45 @@ class MossbauerMaterial:
     
     Mainly because source and absorber might share certain things
     or even be the same object eventually. So trying to be maximally
-    general. For now, a child class just needs a function additional_pars()
+    general. For now, a child class just needs a function _additional_pars()
     that returns a list of required inputs.
-
-    For now this is pretty useless...
     """
-    def __init__(self, p):
+    def __init__(self, **kwargs):
         # assert that all required pars were supplied
         # then update the dict with them (and no others)
         required_pars = [
             'Eres',
             'linewidth',
         ] 
+        required_pars += self._additional_pars()
+        self._setup_pars(**kwargs)
         self.is_split = False  # whether material has one line or several
-        if hasattr(p.get('Eres', []), '__len__'):
+        if hasattr(self.Eres, '__len__'):
             required_pars += ['transition_coefficients']
             self.is_split = True
-        required_pars += self.additional_pars()
-        check_pars(p, required_pars)
-        # use this instead of self.__dict__.update() to ignore extras
-        for par in required_pars:
-            setattr(self, par, p[par])
+        check_pars(self.__dict__, required_pars)
         if self.is_split:
             # coefficients must be unity up to 1 ppm
             assert 1==pytest.approx(np.sum(self.transition_coefficients), 1e-6), \
                 "Coefficients must sum to unity!"
         return
 
-    def additional_pars(self):
+    def _setup_pars(self, **kwargs):
+        self.__dict__.update(kwargs)
+        return
+
+    def _additional_pars(self):
         """Placeholder - overwrite with child"""
         return
 
+
 class MossbauerSource(MossbauerMaterial):
     """Mossbauer source class"""
-    def additional_pars(self):
+    def _additional_pars(self):
         return ['total_activity']
 
     def spectrum(self, E):
-        """Returns photons/sec at the given energy
-
-        """
+        """Returns photons/sec at the given energy"""
         spectrum = 0
         if self.is_split:
             for coef, Eres in zip(self.transition_coefficients, self.Eres):
@@ -72,11 +71,23 @@ class MossbauerSource(MossbauerMaterial):
         spectrum *= self.total_activity
         return spectrum
 
+
 class MossbauerAbsorber(MossbauerMaterial):
     """Mossbauer absorber class"""
-    def additional_pars(self):
+    def _additional_pars(self):
         """Require number of mean free paths thick"""
         return  ['thickness_normalized']
+
+    def transmission_fraction(self, E, vel=0.0):
+        """Returns surviving fraction of photons passing through"""
+        T = np.exp(
+            -1 
+            * self.cross_section(E, vel) 
+            * self.thickness_normalized
+        )
+        if hasattr(self, 'optical_depth'):
+            T *= np.exp(-self.optical_depth)
+        return T
 
     def cross_section(self, E, vel=0.0):
         """Returns resonant absorption cross-section at the given energy"""
@@ -106,16 +117,24 @@ class MossbauerMeasurement:
     physics is here. But it also can load measured data, plot it against
     expectation, eventually do fitting etc.
 
-    source_p: arguments to the source
+    source_p: arguments to the source or MossbauerSource instance
     absorber_p: arguments to the absorber
     measurement_p: parameters for the detector, relative positions, 
                    measurement times, etc.
     """
-    def __init__(self, source_p, absorber_p, measurement_p):
+    def __init__(self, source, absorber, measurement_p):
         # take in truth information of mossbauer setup
         # construct an expected pdf
-        self.source = MossbauerSource(source_p)
-        self.absorber = MossbauerAbsorber(absorber_p)
+        if isinstance(source, dict):
+            self.source = MossbauerSource(source)
+        else:
+            assert isinstance(source, MossbauerSource), "first arg must be dict or MossbauerSource instance"
+            self.source = source
+        if isinstance(absorber, dict):
+            self.absorber = MossbauerAbsorber(absorber)
+        else:
+            assert isinstance(absorber, MossbauerAbsorber), "second arg must be dict or MossbauerAbsorber instance"
+            self.absorber = absorber
         self._setup_measurement(measurement_p)
         # init empty arrays for observed data
         self.clear_measurements()
@@ -268,12 +287,10 @@ class MossbauerMeasurement:
         transmission_integrand = (
             self.source.spectrum(E) 
             * self.solid_angle_fraction
-            * np.exp(
-                -1 
-                * self.absorber.cross_section(E, self.velocity) 
-                * self.absorber.thickness_normalized
-            )
+            * self.absorber.transmission_fraction(E, self.velocity)
         )
+        if hasattr(self, 'background_rate'):
+            transmission_integrand += self.background_rate
         return transmission_integrand
 
     def _transmission_derivative_integrand(self, E):
