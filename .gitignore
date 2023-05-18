@@ -1,0 +1,6 @@
+__pycache__/
+*.egg-info/
+*.dat
+*.log
+*.hdf5
+*.swp
