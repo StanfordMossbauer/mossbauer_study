@@ -126,12 +126,12 @@ class MossbauerMeasurement:
         # take in truth information of mossbauer setup
         # construct an expected pdf
         if isinstance(source, dict):
-            self.source = MossbauerSource(source)
+            self.source = MossbauerSource(**source)
         else:
             assert isinstance(source, MossbauerSource), "first arg must be dict or MossbauerSource instance"
             self.source = source
         if isinstance(absorber, dict):
-            self.absorber = MossbauerAbsorber(absorber)
+            self.absorber = MossbauerAbsorber(**absorber)
         else:
             assert isinstance(absorber, MossbauerAbsorber), "second arg must be dict or MossbauerAbsorber instance"
             self.absorber = absorber
@@ -176,7 +176,11 @@ class MossbauerMeasurement:
         Velocity can be an array or float. If array, you get a spectrum, and
         if float you get back a float. All returned values are in (0, 1).
         """
-        return self._integrate_function_inf(vel, self._transmission_integrand)
+        transmitted_mossbauer_photons = self._integrate_function_inf(
+            vel, self._transmission_integrand
+        )
+        background_rate = self.__dict__.get('background_rate', 0.0)
+        return background_rate + transmitted_mossbauer_photons
 
     def transmitted_spectrum_derivative(self, vel):
         return self._integrate_function_inf(vel, self._transmission_derivative_integrand)
@@ -275,8 +279,8 @@ class MossbauerMeasurement:
     def _setup_measurement(self, p):
         # duplicated code from MossbauerMaterial... idk.
         required_pars = [
-            'acquisition_time',
             'solid_angle_fraction',
+            'detection_efficiency',
         ]
         check_pars(p, required_pars)
         self.__dict__.update(p)
@@ -287,10 +291,12 @@ class MossbauerMeasurement:
         transmission_integrand = (
             self.source.spectrum(E) 
             * self.solid_angle_fraction
+            * self.detection_efficiency
             * self.absorber.transmission_fraction(E, self.velocity)
         )
         if hasattr(self, 'background_rate'):
-            transmission_integrand += self.background_rate
+            pass
+            #transmission_integrand += self.background_rate
         return transmission_integrand
 
     def _transmission_derivative_integrand(self, E):

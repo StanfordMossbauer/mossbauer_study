@@ -98,6 +98,7 @@ class AlphaIron(PredefinedAbsorber):
         # from Violet and Pipcorn 1971, using Palladium source
         # TODO: I guess we need to subtract palladium isomer shift and add rhodium?
         Eres = np.array([-5.48, -3.25, -1.01, 0.66, 2.90, 5.13])
+        Eres -= Eres.mean()
 
         # properties of this particular absorber
         Fe57_abundance = kwargs.get('abundance', 0.02)
