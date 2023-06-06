@@ -2,6 +2,7 @@ from scipy.integrate import quad, quad_vec
 from scipy.stats import cauchy, binom, poisson
 from scipy.optimize import curve_fit, minimize
 from scipy.special import jv
+from scipy.interpolate import interp1d
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -191,7 +192,7 @@ class MossbauerMeasurement:
         """
         # idk if confusing to let kwargs override these
         vels = kwargs.get('vels', self.source.linewidth*np.logspace(-6, 2, 10000)/2)
-        acquisition_time = kwargs.get('acquisition_time', self.acquisition_time)
+        acquisition_time = kwargs.get('acquisition_time', 3600*24*31)
 
         rates = self.transmitted_spectrum(vels)
         ders = self.transmitted_spectrum_derivative(vels)
@@ -205,7 +206,7 @@ class MossbauerMeasurement:
         """Recursive calculation, should be fully correct"""
         # idk if confusing to let kwargs override these
         vels = kwargs.get('vels', self.source.linewidth*np.logspace(-6, 2, 10000))
-        acquisition_time = kwargs.get('acquisition_time', self.acquisition_time)
+        acquisition_time = kwargs.get('acquisition_time', 3600*24*31)
         
         rates = self.transmitted_spectrum(vels)
         f = interp1d(rates, vels, fill_value='extrapolate')
