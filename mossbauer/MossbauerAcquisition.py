@@ -57,20 +57,23 @@ class MossbauerSource(MossbauerMaterial):
     def _additional_pars(self):
         return ['total_activity']
 
-    def spectrum(self, E):
+    def spectrum(self, E, vel=0.0):
         """Returns photons/sec at the given energy"""
-        spectrum = 0
+        spectrum = 0.0
         if self.is_split:
             for coef, Eres in zip(self.transition_coefficients, self.Eres):
                 spectrum += coef * lorentzian_norm(
-                    E, Eres, self.linewidth/2
+                    E, Eres + vel, self.linewidth/2
                 )
         else:
             spectrum += lorentzian_norm(
-                E, self.Eres, self.linewidth/2
+                E, self.Eres + vel, self.linewidth/2
             )
         spectrum *= self.total_activity
         return spectrum
+
+    def smeared_spectrum(self, E, thetamax, vel=0.0):
+        return 2*np.pi*self.total_activity / np.pi / vel * (np.arctan(2*(self.Eres + vel - E)/self.linewidth) - np.arctan(2*(self.Eres + vel*np.cos(thetamax) - E)/self.linewidth))
 
 
 class MossbauerAbsorber(MossbauerMaterial):
@@ -289,15 +292,15 @@ class MossbauerMeasurement:
 
     def _transmission_integrand(self, E):
         # photons/s between E and E + dE
+        transmission_fraction = self.absorber.transmission_fraction(E)#, self.velocity)
+        if self.__dict__.get('reemission', False):
+            transmission_fraction += self.solid_angle_fraction * (1 - transmission_fraction)
         transmission_integrand = (
-            self.source.spectrum(E) 
+            self.source.spectrum(E, self.velocity) 
             * self.solid_angle_fraction
             * self.detection_efficiency
-            * self.absorber.transmission_fraction(E, self.velocity)
+            * transmission_fraction
         )
-        if hasattr(self, 'background_rate'):
-            pass
-            #transmission_integrand += self.background_rate
         return transmission_integrand
 
     def _transmission_derivative_integrand(self, E):
