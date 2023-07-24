@@ -7,8 +7,12 @@ name_map = {
     'measured_counts': 'count',
 }
 
-def get_current_activity(half_life_days, activity, date):
-    tdiff_seconds = (datetime.now() - datetime.strptime(date, '%Y%m%d')).total_seconds()
+def get_current_activity(half_life_days, activity, date, nowdate=None):
+    if nowdate is None:
+        nowdate = datetime.now()
+    else:
+        nowdate = datetime.strptime(nowdate, '%Y%m%d')
+    tdiff_seconds = (nowdate - datetime.strptime(date, '%Y%m%d')).total_seconds()
     return activity*((0.5)**(tdiff_seconds/(3600*24)/half_life_days))
 
 

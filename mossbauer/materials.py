@@ -105,6 +105,8 @@ class AlphaIron(PredefinedAbsorber):
         thickness_microns = kwargs.get('thickness_microns', 0.4*25.4)
         thickness_gcm2_Fetot = thickness_microns / 1e4 * iron_density
         thickness_mgcm2_Fe57 = thickness_gcm2_Fetot * 1e3 * Fe57_abundance
+        optical_depth = thickness_gcm2_Fetot * mass_absorption_coef
+        print(optical_depth)
 
         return dict(
             Eres=Eres,
@@ -124,8 +126,9 @@ class CobaltRhodiumMatrix(PredefinedSource):
         photon_energy = 14.4e3  # eV
         natural_linewidth = 4.55e-9  # eV
         mossbauer_relative_intensity = 0.0916
+        print(kwargs)
         date = kwargs.get('date', datetime.now().strftime('%Y%m%d'))
-        source_activity_Ci = get_current_activity(270., 2.6e-3, '20210830')
+        source_activity_Ci = get_current_activity(270., 2.6e-3, '20210830', date)
         source_activity = 3.7e10 * source_activity_Ci  # Hz
 
         ### source parameters
@@ -136,5 +139,53 @@ class CobaltRhodiumMatrix(PredefinedSource):
         )
 
 
+class Beryllium(PredefinedAbsorber):
+    """Two parameters (optional)
 
+    abundance: default natural, as decimal fraction (default 0.02)
+    thickness_cm: physical thickness in microns (default 0.4 mil)
+    """
+    def get_all_pars(self, **kwargs):
+        # properties of Fe-57
+        Fe_molar_mass = xraydb.atomic_mass('Fe')
+        Fe_density = 7.87  # g/cm3
+        photon_energy = 14.4e3  # eV
+        natural_linewidth = 4.55e-9  # eV
+        resonant_absorption_coefficient = 25.0  # cm^2/mgFe57
 
+        # properties of this compound
+        recoilless_fraction = 0.8
+        Be_density = 1.85  # g/cm3
+        Be_molar_mass = xraydb.atomic_mass('Be')  # g/mol
+        mass_absorption_coef = xraydb.mu_elam('Be', photon_energy)  # cm^2/gBe
+
+        # from Violet and Pipcorn 1971, using Palladium source
+        # TODO: I guess we need to subtract palladium isomer shift and add rhodium?
+        Eres = 0.0
+
+        split_ratio = (3, 2, 1, 1, 2, 3)
+        transition_coefficients = np.asarray(split_ratio, dtype=float)/np.sum(split_ratio)
+  
+        # from Violet and Pipcorn 1971, using Palladium source
+        # TODO: I guess we need to subtract palladium isomer shift and add rhodium?
+        Eres = np.array([-5.48, -3.25, -1.01, 0.66, 2.90, 5.13])
+        Eres -= Eres.mean()
+
+        # properties of this particular absorber
+        Fe_impurity_fraction = kwargs.get('impurity_fraction', 1e-3)
+        Fe57_abundance = kwargs.get('abundance', 0.02)
+        thickness_cm = kwargs.get('thickness_cm', 2.54*0.2)
+
+        mol_per_cm2 = Be_density / Be_molar_mass * thickness_cm
+        mol_Fe57_per_cm2 = mol_per_cm2 * Fe_impurity_fraction * Fe57_abundance
+        
+        thickness_mgcm2_Fe57 = mol_Fe57_per_cm2 * Fe_molar_mass * 1e3
+        thickness_gcm2_Be = mol_per_cm2 * Be_molar_mass
+
+        return dict(
+            Eres=Eres,
+            transition_coefficients=transition_coefficients,
+            linewidth=E_to_vel(natural_linewidth, photon_energy),
+            thickness_normalized=thickness_mgcm2_Fe57 * resonant_absorption_coefficient * recoilless_fraction,
+            optical_depth=thickness_gcm2_Be * mass_absorption_coef
+        )
