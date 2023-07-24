@@ -134,7 +134,3 @@ class CobaltRhodiumMatrix(PredefinedSource):
             linewidth=E_to_vel(natural_linewidth, photon_energy),
             total_activity=mossbauer_relative_intensity * source_activity
         )
-
-
-
-

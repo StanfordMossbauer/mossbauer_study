@@ -1,5 +1,6 @@
 from datetime import datetime
 import numpy as np
+import matplotlib.pyplot as plt
 
 name_map = {
     'measured_velocities': 'vel',
@@ -50,3 +51,12 @@ def rate_to_deltaEmin(acquisition_time, rate, rate_derivative):
     return min_dE
 
 
+def add_energy_axis(ax):
+    ax2 = ax.twiny()
+    velticks = ax.get_xticks()
+    xrange = ax.get_xlim()
+    Eticks = vel_to_E(velticks)
+    values = Eticks
+    plt.xticks(velticks, labels=Eticks)
+    plt.xlim(xrange)
+    plt.xlabel(r'$E$ [eV] - 14400')
