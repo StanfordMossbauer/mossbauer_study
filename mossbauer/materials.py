@@ -98,7 +98,7 @@ class AlphaIron(PredefinedAbsorber):
         # from Violet and Pipcorn 1971, using Palladium source
         # TODO: I guess we need to subtract palladium isomer shift and add rhodium?
         Eres = np.array([-5.48, -3.25, -1.01, 0.66, 2.90, 5.13])
-        Eres -= Eres.mean()
+        Eres -= Eres.mean()  # all isomer shifts are relative to alpha-iron
 
         # properties of this particular absorber
         Fe57_abundance = kwargs.get('abundance', 0.02)
@@ -122,7 +122,7 @@ class CobaltRhodiumMatrix(PredefinedSource):
     activity: default to the original ~1 mCi source
     """
     def get_all_pars(self, **kwargs):
-        Eres = 0.121
+        Eres = 0.121 -0.01
         photon_energy = 14.4e3  # eV
         natural_linewidth = 4.55e-9  # eV
         mossbauer_relative_intensity = 0.0916

@@ -3,6 +3,8 @@ from scipy.stats import cauchy, binom, poisson
 from scipy.optimize import curve_fit, minimize
 from scipy.special import jv
 
+from scipy.interpolate import interp1d
+
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -21,6 +23,10 @@ class MossbauerMaterial:
     or even be the same object eventually. So trying to be maximally
     general. For now, a child class just needs a function _additional_pars()
     that returns a list of required inputs.
+
+    9/18/23 (Joey) - I maybe regret a bit how many classes I made, like I'm not sure
+    this was ultimately necessary. The real motivation was that absorbers and
+    sources share "Eres" and "linewidth" as properties... Anyway it works...
     """
     def __init__(self, **kwargs):
         # assert that all required pars were supplied
@@ -47,12 +53,21 @@ class MossbauerMaterial:
         return
 
     def _additional_pars(self):
-        """Placeholder - overwrite with child"""
+        """Placeholder - overwrite with subclass
+
+        Should return a list of required kwargs to __init__
+        """
         return
 
 
 class MossbauerSource(MossbauerMaterial):
-    """Mossbauer source class"""
+    """Mossbauer source class
+
+    In addition to Eres and linewidth, a source requires a total activity in Hz.
+    Its main attribute is spectrum() which tells you the rate of photons emitted at
+    a given energy (in velocity units). This class is meant to ignore anything not
+    emitted as a recoilless (Mossbauer) photon.
+    """
     def _additional_pars(self):
         return ['total_activity']
 
@@ -73,7 +88,19 @@ class MossbauerSource(MossbauerMaterial):
 
 
 class MossbauerAbsorber(MossbauerMaterial):
-    """Mossbauer absorber class"""
+    """Mossbauer absorber class
+
+    Besides Eres and linewidth, we need to specify the thickness in units of
+    resonant absorption mean free paths (dimensionless) to determine which photons
+    get absorbed. 
+
+    There is also an optional kwarg `optical_depth` to account for non-resonant (mass)
+    absorption in the absorber. In materials.py you can see examples of how to use NIST
+    with this.
+
+    The main attribute is transmission_fraction(), which determines
+    how much absorption occurs.
+    """
     def _additional_pars(self):
         """Require number of mean free paths thick"""
         return  ['thickness_normalized']
@@ -157,16 +184,13 @@ class MossbauerMeasurement:
         sensi = getattr(self, f'_get_sensitivity_{model}')(deltaE, rs, **kwargs)
         return rs, sensi
 
-    def info(self):
-        """Placeholder... get all relevant info about the masurement"""
-        return
-
     def set_velocity(self, vel):
         """Set the (relative?) velocity of the experiment
         For now this is a class attribute which can be
         an array or a number.
         """
-        # TODO: generalize this to source and absorber velocity?
+        # TODO: generalize this to source and absorber velocity? so we can have both
+        #       moving at once?
         self.velocity = vel
         return
 
@@ -175,6 +199,10 @@ class MossbauerMeasurement:
 
         Velocity can be an array or float. If array, you get a spectrum, and
         if float you get back a float. All returned values are in (0, 1).
+
+        This is necessary because the integral doesnt have a closed-form solution
+        and needs to be numerically evaluated. The result is Lorentzian only in the
+        thin-absorber approximation (possibly valid for our eventual setup).
         """
         transmitted_mossbauer_photons = self._integrate_function_inf(
             vel, self._transmission_integrand
@@ -212,10 +240,13 @@ class MossbauerMeasurement:
 
         nnew = (acquisition_time*rates) + np.sqrt(acquisition_time * rates)
         vnew = f(nnew/acquisition_time) - vels
+        vnew_return = vnew.min()
+        if kwargs.get('return_vels', False):
+            vnew_return = vnew
 
         slope_vel = vels[vnew.argmin()]
         slope_rate = rates[vnew.argmin()]
-        return (slope_vel, slope_rate, vnew.min())
+        return (slope_vel, slope_rate, vnew_return)
 
     #### I/O Stuff ####
     # Maybe this makes the class too big and ugly... I have no idea.
@@ -273,7 +304,7 @@ class MossbauerMeasurement:
 
     # Hidden functions
     def _get_sensitivity_down_quark(self, deltaE, rs, **kwargs):
-        """physics lives in separate module"""
+        """Physics lives in separate module"""
         return physics.get_limits(rs, deltaE)
 
     def _setup_measurement(self, p):
@@ -287,6 +318,11 @@ class MossbauerMeasurement:
         return
 
     def _transmission_integrand(self, E):
+        """The actual function integrated -- convolution of source and absorber
+
+        From eq. 2.25 in Mossbauer Spectroscopy and Transition Metal Chemistry
+        (Gutlich, Bill, Trautwein)
+        """
         # photons/s between E and E + dE
         transmission_integrand = (
             self.source.spectrum(E) 
@@ -295,11 +331,14 @@ class MossbauerMeasurement:
             * self.absorber.transmission_fraction(E, self.velocity)
         )
         if hasattr(self, 'background_rate'):
+            # TODO this was buggy so I'm adding background elsewhere for now. Probably
+            # should delete this part.
             pass
             #transmission_integrand += self.background_rate
         return transmission_integrand
 
     def _transmission_derivative_integrand(self, E):
+        """Derivative of the above function"""
         transmission_integrand = self._transmission_integrand(E)
         Ediff = E - (self.absorber.Eres - self.velocity)
         half_linewidth = self.absorber.linewidth/2.0

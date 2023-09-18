@@ -2,6 +2,9 @@ from datetime import datetime
 import numpy as np
 import matplotlib.pyplot as plt
 
+
+Fe57_natural_linewidth = 4.55e-9  # eV
+
 name_map = {
     'measured_velocities': 'vel',
     'measured_times': 'seconds',
@@ -59,8 +62,8 @@ def add_energy_axis(ax):
     ax2 = ax.twiny()
     velticks = ax.get_xticks()
     xrange = ax.get_xlim()
-    Eticks = vel_to_E(velticks)
+    Eticks = vel_to_E(velticks)/1e-9
     values = Eticks
-    plt.xticks(velticks, labels=Eticks)
+    plt.xticks(velticks, labels=['%.1f' % tick for tick in Eticks])
     plt.xlim(xrange)
-    plt.xlabel(r'$E$ [eV] - 14400')
+    plt.xlabel(r'$E$ [neV] - 14.4 keV')
