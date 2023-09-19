@@ -53,8 +53,15 @@ def lorentzian_norm(x, x0, gamma):
 
 
 def rate_to_deltaEmin(acquisition_time, rate, rate_derivative):
+    """Takes in time, rate, and derivative
+
+    Returns the energy shift required to make the change in rate
+    equal to the poisson statistics
+
+    Units are in mm/sec
+    """
     required_dN = np.sqrt(rate*acquisition_time)
-    min_dE = required_dN/(acquisition_time*rate_derivative)
+    min_dE = required_dN/(acquisition_time*rate_derivative)  # TODO: should be absolute value of derivative
     return min_dE
 
 

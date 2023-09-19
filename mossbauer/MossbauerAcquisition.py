@@ -235,18 +235,23 @@ class MossbauerMeasurement:
         vels = kwargs.get('vels', self.source.linewidth*np.logspace(-6, 2, 10000))
         acquisition_time = kwargs.get('acquisition_time', self.acquisition_time)
         
+        # make the spectrum
         rates = self.transmitted_spectrum(vels)
+        # make the inverse function (velocity(Rate))
         f = interp1d(rates, vels, fill_value='extrapolate')
 
+        # setting change in rate equal to poisson uncertainty on rate
         nnew = (acquisition_time*rates) + np.sqrt(acquisition_time * rates)
-        vnew = f(nnew/acquisition_time) - vels
-        vnew_return = vnew.min()
+        # find the energy at which this new rate occurs
+        Enew = f(nnew/acquisition_time)
+        deltaE = Enew - vels
+        deltaE_return = deltaE.min()
         if kwargs.get('return_vels', False):
-            vnew_return = vnew
+            deltaE_return = deltaE
 
-        slope_vel = vels[vnew.argmin()]
-        slope_rate = rates[vnew.argmin()]
-        return (slope_vel, slope_rate, vnew_return)
+        slope_vel = vels[deltaE.argmin()]
+        slope_rate = rates[deltaE.argmin()]
+        return (slope_vel, slope_rate, deltaE_return)
 
     #### I/O Stuff ####
     # Maybe this makes the class too big and ugly... I have no idea.

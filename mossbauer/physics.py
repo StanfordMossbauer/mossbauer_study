@@ -16,6 +16,7 @@ def yukawa_to_alpha(yukawa):
     return (yukawa / (1/planck_mass) * kappa_d)**2/(4*np.pi)
 
 def get_limits(r, deltaE):
+    """Exactly reproduces fig. 3 in PRD (2020)"""
     epsilon = 2.5/kappa_d  # fudge factor
     bkg = 1e-14*((1e-8/r)**4)  # eV
     sensi = deltaE + bkg  # eV
