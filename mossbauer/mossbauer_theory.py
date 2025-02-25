@@ -1,11 +1,12 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import numpy as np
-from scipy.integrate import quad_vec
+from scipy.integrate import quad, quad_vec
 from scipy.special import jv
 import xraydb 
 from datetime import datetime
+import matplotlib.pyplot as plt
 
-
+############################################     CONSTANTS   #########################################################
 
 # Fundamental constants
 c = 3e8  # Speed of light in m/s
@@ -47,140 +48,124 @@ def _lorentzian_s(x, x0, gamma):
 
 def _lorentzian_a(x, x0, gamma):
     return (gamma/2)**2/( ((x-x0))**2 + (gamma/2)**2)
-    
-
-
 
 
 ############################################     SOURCE CLASSES   #########################################################
-
-
-@dataclass
 class CobaltRhodium:
-    T: float = 292
-    Td: float = 510 #Rhodium
-    E0: float = 14.4e3
-    Gamma_ev = 4.55e-9 #eV
-    Eres = [0]
-    split_ratio = [1] 
-
-    activity_Ci= 50e-3
-    production_date = '20250112'
-    date = None #means now
-    half_life = 272
-    mossbauer_relative_intensity = 0.0916
-    M =  57e-3 / Na
-    element = 'Fe'
-    alpha = 8.17
+    def __init__(self):
+        self.T = 292
+        self.Td = 510
+        self.E0 = 14.4e3
+        self.Gamma_ev = 4.55e-9
+        self.Eres = [0]
+        self.split_ratio = [1]
+        self.activity_Ci = 50e-3
+        self.production_date = '20250112'
+        self.date = None
+        self.half_life = 272
+        self.mossbauer_relative_intensity = 0.0916
+        self.M = 57e-3 / Na
+        self.element = 'Fe'
+        self.alpha = 8.17
+        self.update_params()
     
     def update_params(self):
-        
-        self.Gamma = self.Gamma_ev*c/self.E0*1000
-        self.current_activity_Ci = get_current_activity(self.half_life, self.activity_Ci, self.production_date,self.date)       
-        self.mossbauer_photon_rate = calculate_photon_rate(self.current_activity_Ci, self.mossbauer_relative_intensity)       
-        self.fs = calculate_recoilless_fraction(self.T, self.Td, self.E0, self.M)       
-        self.transition_coefficients = np.asarray(self.split_ratio, dtype=float)/np.sum(self.split_ratio)
-    
+        self.Gamma = self.Gamma_ev * c / self.E0 * 1000
+        self.current_activity_Ci = get_current_activity(self.half_life, self.activity_Ci, self.production_date, self.date)
+        self.mossbauer_photon_rate = calculate_photon_rate(self.current_activity_Ci, self.mossbauer_relative_intensity)
+        self.fs = calculate_recoilless_fraction(self.T, self.Td, self.E0, self.M)
+        self.transition_coefficients = np.asarray(self.split_ratio, dtype=float) / np.sum(self.split_ratio)
 
 
-@dataclass
 class CobaltFe:
-    T = 292
-    Td = 470 #Fe
-    E0 = 14.4e3
-    Gamma_ev = 4.55e-9 #eV
-    Eres = [-5,-3,-1,1,3,5]
-    split_ratio = [3,2,1,1,2,3] 
-   
-    activity_Ci= 50e-3
-    production_date = '20250112'
-    date = None #means now
-    half_life = 272
-    mossbauer_relative_intensity = 0.0916
-    M =  57e-3 / Na
-    element = 'Fe'
-    alpha = 8.17
+    def __init__(self):
+        self.T = 292
+        self.Td = 470
+        self.E0 = 14.4e3
+        self.Gamma_ev = 4.55e-9
+        self.Eres = [-5, -3, -1, 1, 3, 5]
+        self.split_ratio = [3, 2, 1, 1, 2, 3]
+        self.activity_Ci = 50e-3
+        self.production_date = '20250112'
+        self.date = None
+        self.half_life = 272
+        self.mossbauer_relative_intensity = 0.0916
+        self.M = 57e-3 / Na
+        self.element = 'Fe'
+        self.alpha = 8.17
+        self.update_params()
     
     def update_params(self):
-        
-        self.Gamma = self.Gamma_ev*c/self.E0*1000
-        self.current_activity_Ci = get_current_activity(self.half_life, self.activity_Ci, self.production_date,self.date)       
-        self.mossbauer_photon_rate = calculate_photon_rate(self.current_activity_Ci, self.mossbauer_relative_intensity)       
-        self.fs = calculate_recoilless_fraction(self.T, self.Td, self.E0, self.M)       
-        self.transition_coefficients = np.asarray(self.split_ratio, dtype=float)/np.sum(self.split_ratio)
+        self.Gamma = self.Gamma_ev * c / self.E0 * 1000
+        self.current_activity_Ci = get_current_activity(self.half_life, self.activity_Ci, self.production_date, self.date)
+        self.mossbauer_photon_rate = calculate_photon_rate(self.current_activity_Ci, self.mossbauer_relative_intensity)
+        self.fs = calculate_recoilless_fraction(self.T, self.Td, self.E0, self.M)
+        self.transition_coefficients = np.asarray(self.split_ratio, dtype=float) / np.sum(self.split_ratio)
 
 
-    
-########################################          ABSORBER CLASSES      ###############################################
+############################################     ABSORBER CLASSES   #########################################################
 
-@dataclass
+
 class alphaFe:
-    thickness_m = 25e-6 #m
-    T = 292
-    Td = 470
-    E0 = 14.4e3
-    Gamma_ev = 4.55e-9 #eV
-    Eres = [-5,-3,-1,1,3,5]
-    split_ratio = [3,2,1,1,2,3]
-    abundance = 0.0212
-    M = 57e-3 / Na
-    nM = Na / 57
-    rho = 7.87e3
-    element = 'Fe'
-    alpha = 8.17
+    def __init__(self):
+        self.thickness_m = 25e-6
+        self.T = 292
+        self.Td = 470
+        self.E0 = 14.4e3
+        self.Gamma_ev = 4.55e-9
+        self.Eres = [-5, -3, -1, 1, 3, 5]
+        self.split_ratio = [3, 2, 1, 1, 2, 3]
+        self.abundance = 0.0212
+        self.M = 57e-3 / Na
+        self.nM = Na / 57
+        self.rho = 7.87e3
+        self.element = 'Fe'
+        self.alpha = 8.17
+        self.update_params()
     
     def update_params(self):
-        
-        self.Gamma = self.Gamma_ev*c/self.E0*1000
+        self.Gamma = self.Gamma_ev * c / self.E0 * 1000
         self.mu_e = calculate_mu_e(self.element, self.E0)
         self.fa = calculate_recoilless_fraction(self.T, self.Td, self.E0, self.M)
-        self.transition_coefficients = np.asarray(self.split_ratio, dtype=float)/np.sum(self.split_ratio)
-        self.sigma0 = calculate_sigma0(self.E0, 3/2, 1/2, self.alpha)   
+        self.transition_coefficients = np.asarray(self.split_ratio, dtype=float) / np.sum(self.split_ratio)
+        self.sigma0 = calculate_sigma0(self.E0, 3/2, 1/2, self.alpha)
         self.thickness_gcm2 = calculate_thickness_gcm2(self.thickness_m, self.rho, 1)
         self.thickness_gcm2_Fe57 = calculate_thickness_gcm2(self.thickness_m, self.rho, self.abundance)
         self.thickness_normalized = self.fa * self.nM * self.sigma0 * self.thickness_gcm2_Fe57
-    
 
 
 class KFeCy:
-    thickness_gcm2_Fe = 6e-3 #g/cm2
-    E0 = 14.4e3 #eV
-    Gamma_ev = 4.55e-9 #eV
-    Eres = [0] #mm/s
-    split_ratio = [1]
-    abundance = 0.0212
-    M =  57e-3 / Na
-    nM = Na / 57
-    rho = 7.87e3
-    elements = {  # K4[Fe(CN)6]·3H2O
-                'Fe': 1,
-                'K': 4,
-                'C': 6,
-                'N': 6,
-                'H': 6,
-                'O': 3,
-            }
-    alpha = 8.17
-    sigma0 = 2.1e-18 # https://journals.aps.org/prb/pdf/10.1103/PhysRevB.4.2915
-    fa =0.311 # https://www.sciencedirect.com/science/article/abs/pii/0029554X81900987
+    def __init__(self):
+        self.thickness_gcm2_Fe = 6e-3
+        self.E0 = 14.4e3
+        self.Gamma_ev = 4.55e-9
+        self.Eres = [0]
+        self.split_ratio = [1]
+        self.abundance = 0.0212
+        self.M = 57e-3 / Na
+        self.nM = Na / 57
+        self.rho = 7.87e3
+        self.elements = {'Fe': 1, 'K': 4, 'C': 6, 'N': 6, 'H': 6, 'O': 3}
+        self.alpha = 8.17
+        self.sigma0 = 2.1e-18 # https://journals.aps.org/prb/pdf/10.1103/PhysRevB.4.2915
+        self.fa = 0.311 # https://www.sciencedirect.com/science/article/abs/pii/0029554X81900987
+        self.update_params()
     
     def update_params(self):
-
-        self.Gamma = self.Gamma_ev*c/self.E0*1000       
-        self.transition_coefficients = np.asarray(self.split_ratio, dtype=float)/np.sum(self.split_ratio)
+        self.Gamma = self.Gamma_ev * c / self.E0 * 1000
+        self.transition_coefficients = np.asarray(self.split_ratio, dtype=float) / np.sum(self.split_ratio)
         self.thickness_gcm2_Fe57 = self.thickness_gcm2_Fe * self.abundance
-        self.thickness_normalized = self.fa * self.nM * self.sigma0 * self.thickness_gcm2_Fe57                       
+        self.thickness_normalized = self.fa * self.nM * self.sigma0 * self.thickness_gcm2_Fe57
         self.mass_sum = np.sum([val * xraydb.atomic_mass(element) for element, val in self.elements.items()])
-        self.mu_e = np.sum([xraydb.mu_elam(element, self.E0) * multiplicity *xraydb.atomic_mass(element) / self.mass_sum \
+        self.mu_e = np.sum([xraydb.mu_elam(element, self.E0) * multiplicity * xraydb.atomic_mass(element) / self.mass_sum 
                             for element, multiplicity in self.elements.items()])
-        self.thickness_gcm2 = self.thickness_gcm2_Fe / (self.elements['Fe'] * xraydb.atomic_mass('Fe')) * self.mass_sum 
+        self.thickness_gcm2 = self.thickness_gcm2_Fe / (self.elements['Fe'] * xraydb.atomic_mass('Fe')) * self.mass_sum
+
         
     
         
     
 ###########################################      MOSSBAUER    ######################################################
-    
-
 
 c=3e8
 
