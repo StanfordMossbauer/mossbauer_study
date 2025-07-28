@@ -1,5 +1,5 @@
-from .load_spectrum import *
-from .analyse_file import *
+from .ironanalytics_load import *
+from .ironanalytics_analyze import *
 from .fit_functions import *
 from .utils import *
 

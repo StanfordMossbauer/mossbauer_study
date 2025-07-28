@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 from mossbauer_analysis.mossbauer_theory import CobaltRhodium, CobaltFe, KFeCy, alphaFe, Mossbauer    #import classes for sources, absorbers, and the mossbauer transmission spectrum
 from mossbauer_analysis.fit_functions import linear, six_peak_lorentzian_poly2, single_peak_lorentzian_poly2, poly5
-from mossbauer_analysis.load_spectrum import read_ironanalytics_data, print_ironanalytics_metadata 
+from mossbauer_analysis.ironanalytics_load import read_ironanalytics_data, print_ironanalytics_metadata 
 import mossbauer_analysis.utils as u
 
 
