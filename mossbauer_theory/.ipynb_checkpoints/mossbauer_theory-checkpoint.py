@@ -223,3 +223,34 @@ class Mossbauer:
     def epsilon(self,t):
         return 1-np.exp(-t/2)*jv(0,1j*t/2).real
 
+
+if __name__ == "__main__":
+    source = CobaltRhodium()
+
+    absorber = KFeCy()
+    absorber.update_params()
+
+    moss = Mossbauer(source, absorber)
+
+    v = np.linspace(-10,10,1000)
+    t = moss.total_transmission_rate1(v)
+    norm = moss.source.mossbauer_photon_rate
+
+
+    plt.plot(v, t/norm, label = 'Fe')
+
+    plt.axhline((1-((t.max()-t.min())/2/t.max()))*moss.non_resonant_attenuation())
+    plt.axvline(-(source.Gamma + absorber.Gamma)/2)
+    plt.axvline((source.Gamma + absorber.Gamma)/2)
+
+    plt.axhline((1 - source.fs)*moss.non_resonant_attenuation(),color = 'r')
+    plt.axhline((1 - source.fs*moss.epsilon(absorber.thickness_normalized))*moss.non_resonant_attenuation(),color = 'g')
+
+
+
+    plt.ylim(0,1)
+    plt.xlim(-1,1)
+
+
+    vis = moss.epsilon(absorber.thickness_normalized)*source.fs
+    vis, (t.max()-t.min())/t.max(), source.mossbauer_photon_rate/1e6, moss.non_resonant_attenuation()
