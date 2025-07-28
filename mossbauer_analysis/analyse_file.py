@@ -4,8 +4,7 @@ from scipy.ndimage import gaussian_filter
 import os
 from datetime import datetime, timedelta
 
-from mossbauer_theory import CobaltRhodium, CobaltFe, KFeCy, alphaFe, Mossbauer    #import calsses for sources, absorbers, and the mossbauer transmission spectrum
-from mossbauer_theory.mossbauer_theory import CobaltRhodium, CobaltFe, KFeCy, alphaFe, Mossbauer
+from mossbauer_analysis.mossbauer_theory import CobaltRhodium, CobaltFe, KFeCy, alphaFe, Mossbauer    #import classes for sources, absorbers, and the mossbauer transmission spectrum
 from mossbauer_analysis.fit_functions import linear, six_peak_lorentzian_poly2, single_peak_lorentzian_poly2, poly5
 from mossbauer_analysis.load_spectrum import read_ironanalytics_data, print_ironanalytics_metadata 
 import mossbauer_analysis.utils as u
@@ -170,7 +169,7 @@ if __name__ == "__main__":
             }
 
 
-    params = {  'directory':  'C:/Users/magrini/Documents/programming/mossbauer_theory/data/SAW_spectra/calbration_spectra',
+    params = {  'directory':  'C:/Users/magrini/Documents/programming/mossbauer_analysis/data/SAW_spectra/calbration_spectra',
                 'id': 'A00043',
                 'offset': -3,
                 'side': 'left',
@@ -193,7 +192,7 @@ if __name__ == "__main__":
             }
 
 
-    params = {  'directory':  'C:/Users/magrini/Documents/programming/mossbauer_theory/data/SAW_spectra/calbration_spectra',
+    params = {  'directory':  'C:/Users/magrini/Documents/programming/mossbauer_analysis/data/SAW_spectra/calbration_spectra',
                 'id': 'A00049',
                 'offset': -3,
                 'side': 'right',

@@ -144,7 +144,7 @@ if __name__ == "__main__":
     # Example usage
         # Assuming the directory and file_id are set correctly
 
-    dir = 'C:/Users/magrini/Documents/programming/mossbauer_theory/data/SAW_spectra/saw_spectra_16mms'
+    dir = 'C:/Users/magrini/Documents/programming/mossbauer_analysis/data/SAW_spectra/saw_spectra_16mms'
     id = ['A00101','A00102']
     dat = read_ironanalytics_data(dir, id, offset = -3)
     #print_ironanalytics_metadata(dir)
